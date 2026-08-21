@@ -1,0 +1,55 @@
+{
+  "RoleName": "cicd-deploy-role",
+  "AssumeRolePolicyDocument": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "GitHubActionsOIDC",
+        "Effect": "Allow",
+        "Principal": {
+          "Federated": "arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com"
+        },
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+          "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+          },
+          "StringLike": {
+            "token.actions.githubusercontent.com:sub": "repo:ORG/REPO:*"
+          }
+        }
+      }
+    ]
+  },
+  "PermissionsPolicy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "S3ArtifactUpload",
+        "Effect": "Allow",
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetObjectVersion"
+        ],
+        "Resource": "arn:aws:s3:::SERVICES_BUCKET_NAME/*"
+      },
+      {
+        "Sid": "LambdaDeploy",
+        "Effect": "Allow",
+        "Action": [
+          "lambda:UpdateFunctionCode",
+          "lambda:PublishVersion",
+          "lambda:UpdateAlias",
+          "lambda:GetFunction",
+          "lambda:GetFunctionConfiguration",
+          "lambda:GetAlias"
+        ],
+        "Resource": [
+          "arn:aws:lambda:*:ACCOUNT_ID:function:*",
+          "arn:aws:lambda:*:ACCOUNT_ID:function:*:*"
+        ]
+      }
+    ]
+  }
+}

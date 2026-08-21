@@ -1,0 +1,94 @@
+name: Deploy Service A
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "serviceA/**"
+  workflow_dispatch:
+
+env:
+  SERVICE_NAME: serviceA
+  SERVICE_DIR: serviceA
+  LAMBDA_NAME: ${{ secrets.SERVICE_A_LAMBDA_NAME }}
+  BUCKET_NAME: ${{ secrets.SERVICES_BUCKET_NAME }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ env.SERVICE_DIR }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: npm test
+
+      - name: Build
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: npm run build
+
+      - name: Create Lambda ZIP
+        working-directory: ${{ env.SERVICE_DIR }}
+        run: |
+          cd dist
+          zip -r ../lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload Lambda artifact to S3
+        run: |
+          aws s3 cp \
+            "${{ env.SERVICE_DIR }}/lambda.zip" \
+            "s3://${{ env.BUCKET_NAME }}/${{ env.SERVICE_NAME }}/${{ github.sha }}.zip"
+
+      - name: Update Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ env.LAMBDA_NAME }}" \
+            --s3-bucket "${{ env.BUCKET_NAME }}" \
+            --s3-key "${{ env.SERVICE_NAME }}/${{ github.sha }}.zip"
+
+      - name: Wait for Lambda update
+        run: |
+          aws lambda wait function-updated \
+            --function-name "${{ env.LAMBDA_NAME }}"
+
+      - name: Publish Lambda version
+        id: publish
+        run: |
+          VERSION=$(aws lambda publish-version \
+            --function-name "${{ env.LAMBDA_NAME }}" \
+            --query 'Version' \
+            --output text)
+
+          echo "Published version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update prod alias
+        run: |
+          aws lambda update-alias \
+            --function-name "${{ env.LAMBDA_NAME }}" \
+            --name prod \
+            --function-version "${{ steps.publish.outputs.version }}"
