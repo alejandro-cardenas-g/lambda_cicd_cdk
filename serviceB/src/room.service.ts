@@ -5,7 +5,7 @@ export class RoomService {
   private rooms: Room[];
 
   constructor() {
-    const rooms: Room[] = Array.from({ length: 10 }).map((_, index) => ({
+    const rooms: Room[] = Array.from({ length: 12 }).map((_, index) => ({
       id: v4(),
       name: "room" + (index + 1),
     }));
